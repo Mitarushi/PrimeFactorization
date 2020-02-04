@@ -59,8 +59,7 @@ func addFactor(factor *map[int]int, log float64, cutPows *[7]powLog) {
 
 func sieve(n, sqrtN *big.Int, x, k int,
 	primes *[]int, primeSqrts *[][]int, logPrimes *[]float64,
-	smooths *chan smooth, wg *sync.WaitGroup) {
-	defer wg.Done()
+	smooths chan smooth, wg *sync.WaitGroup) {
 
 	const cutMinLog = 8
 	cutMin := big.NewInt(10)
@@ -119,6 +118,7 @@ func sieve(n, sqrtN *big.Int, x, k int,
 			}
 
 			newSqrts := make(map[int]*big.Int)
+			flag = true
 			for _, sqrt := range sqrts {
 				temp := new(big.Int)
 				temp.Div(temp.Sub(n, temp.Exp(sqrt, big.NewInt(2), nil)), p)
@@ -128,7 +128,6 @@ func sieve(n, sqrtN *big.Int, x, k int,
 						addSet(&newSqrts, new(big.Int).Add(p, sqrt))
 						addSet(&newSqrts, new(big.Int).Sub(new(big.Int).Mul(p, big.NewInt(2)), sqrt))
 						addSet(&newSqrts, new(big.Int).Sub(p, sqrt))
-						p.Mul(p, big.NewInt(int64((*primes)[i])))
 					}
 				} else {
 					y := new(big.Int).Mul(temp, new(big.Int).ModInverse(new(big.Int).Mul(big.NewInt(2), sqrt), big.NewInt(int64((*primes)[i]))))
@@ -136,7 +135,11 @@ func sieve(n, sqrtN *big.Int, x, k int,
 					y.Mul(y, p)
 					addSet(&newSqrts, new(big.Int).Add(sqrt, y))
 					addSet(&newSqrts, new(big.Int).Sub(p.Mul(p, big.NewInt(int64((*primes)[i]))), new(big.Int).Add(sqrt, y)))
+					flag = false
 				}
+			}
+			if flag {
+				p.Mul(p, big.NewInt(int64((*primes)[i])))
 			}
 			sqrts = newSqrts
 		}
@@ -149,19 +152,21 @@ func sieve(n, sqrtN *big.Int, x, k int,
 		addFactor(&factor[i], table[i], &cutPows)
 		fmt.Printf("%v %v %v\n", i, table[i], factor[i])
 
-		*smooths <- smooth{x + i, factor[i]}
+		smooths <- smooth{x + i, factor[i]}
 		count += 1
 	}
-	fmt.Println(count)
+	wg.Done()
 }
 
-func QS(n *big.Int, b, k int) []int {
+func QS(n *big.Int, b, k int, processNumber int) []int {
+	const chanStack = 100
+
 	if b == -1 {
 		nFloat, _ := new(big.Float).SetInt(n).Float64()
 		bFloat := math.Exp(math.Sqrt(math.Log(nFloat)*math.Log(math.Log(nFloat))) / 2.0)
 		b = int(bFloat) + 1
 	}
-	fmt.Printf("B is set as %d\n", b)
+	fmt.Printf("B is set to %d\n", b)
 
 	start := time.Now()
 	rawPrimes := eratosthenes(b)
@@ -184,14 +189,35 @@ func QS(n *big.Int, b, k int) []int {
 	sqrtN := new(big.Int).Sqrt(n)
 	sqrtN.Add(sqrtN, big.NewInt(1))
 
-	fmt.Println(k)
+	smooths := make([]smooth, 0, len(primes)+1)
+	wg := sync.WaitGroup{}
 
-	wg := &sync.WaitGroup{}
-	smooths := make(chan smooth, k)
-	wg.Add(1)
 	start = time.Now()
-	go sieve(n, sqrtN, 0, k, &primes, &primeSqrts, &logPrimes, &smooths, wg)
-	wg.Wait()
+	startX := 0
+	count := 0
+	for {
+		smoothsChan := make(chan smooth, k*processNumber)
+		for i := 0; i < processNumber; i++ {
+			wg.Add(1)
+			go sieve(n, sqrtN, startX, k, &primes, &primeSqrts, &logPrimes, smoothsChan, &wg)
+			startX += k
+		}
+		wg.Wait()
+		count += 1
+		fmt.Printf("%dth sieve has finished. There are %d B-smooth numbers.\n", count, len(smooths))
+		close(smoothsChan)
+		for {
+			i, ok := <-smoothsChan
+			if !ok {
+				break
+			} else {
+				smooths = append(smooths, i)
+			}
+		}
+		if len(smooths) > len(primes) {
+			break
+		}
+	}
 
 	fmt.Printf("There are %d B-smooth numbers. It took %fs to sieve.\n", len(smooths), time.Now().Sub(start).Seconds())
 
@@ -199,7 +225,9 @@ func QS(n *big.Int, b, k int) []int {
 }
 
 func main() {
-	n, _ := new(big.Int).SetString("340282366920938463463374607431768211457", 10)
-	QS(n, 100000, 10000000)
+	//n, _ := new(big.Int).SetString("340282366920938463463374607431768211457", 10)
+	n, _ := new(big.Int).SetString("1522605027922533360535618378132637429718068114961380688657908494580122963258952897654000350692006139", 10)
+	//n, _ := new(big.Int).SetString("147573952589676412927", 10)
+	QS(n, 100000000, 1000000, 5)
 
 }
