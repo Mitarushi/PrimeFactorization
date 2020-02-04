@@ -158,8 +158,10 @@ func sieve(n, sqrtN *big.Int, x, k int,
 	wg.Done()
 }
 
-func QS(n *big.Int, b, k int, processNumber int) []int {
-	const chanStack = 100
+func QS(n *big.Int, b, k int, processNumber, chanStackint int) []int {
+	if chanStackint > k {
+		chanStackint = k
+	}
 
 	if b == -1 {
 		nFloat, _ := new(big.Float).SetInt(n).Float64()
@@ -196,7 +198,7 @@ func QS(n *big.Int, b, k int, processNumber int) []int {
 	startX := 0
 	count := 0
 	for {
-		smoothsChan := make(chan smooth, k*processNumber)
+		smoothsChan := make(chan smooth, processNumber*chanStackint)
 		for i := 0; i < processNumber; i++ {
 			wg.Add(1)
 			go sieve(n, sqrtN, startX, k, &primes, &primeSqrts, &logPrimes, smoothsChan, &wg)
@@ -228,6 +230,6 @@ func main() {
 	//n, _ := new(big.Int).SetString("340282366920938463463374607431768211457", 10)
 	n, _ := new(big.Int).SetString("1522605027922533360535618378132637429718068114961380688657908494580122963258952897654000350692006139", 10)
 	//n, _ := new(big.Int).SetString("147573952589676412927", 10)
-	QS(n, 100000000, 1000000, 5)
+	QS(n, 100000000, 1000000000, 4, 100)
 
 }
